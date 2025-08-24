@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="en" x-data="app()" x-init="init()" class="h-full antialiased">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Prompt Filler</title>
+    <!-- Tailwind CSS via CDN. Uses the latest CDN build which aligns with v4 utility syntax. -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Tailwind config
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ["Inter", "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto", "Noto Sans", "Ubuntu", "Cantarell", "Helvetica Neue", "Arial", "sans-serif"],
+                    },
+                    boxShadow: {
+                        soft: "0 1px 2px 0 rgb(0 0 0 / 0.05), 0 8px 16px -4px rgb(0 0 0 / 0.08)",
+                    }
+                }
+            },
+            darkMode: "class"
+        }
+    </script>
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Helpful caret styling for big textarea */
+        textarea::placeholder {
+            opacity: .6;
+        }
+
+        .token {
+            background: color-mix(in oklab, CanvasText 12%, transparent);
+            border-radius: .5rem;
+            padding: .125rem .375rem;
+        }
+
+        .token-missing {
+            outline: 2px dashed color-mix(in oklab, #ff0000 40%, transparent);
+            outline-offset: 0.1px;
+        }
+
+        .token-filled {
+            outline: 2px dashed color-mix(in oklab, #00cd48 40%, transparent);
+            outline-offset: 0.1px;
+        }
+    </style>
+</head>
+
+<body :class="{ 'dark bg-neutral-950 text-neutral-100': dark, 'bg-neutral-50 text-neutral-900': !dark }"
+    class="min-h-full">
+    <!-- App Shell -->
+    <header
+        class="sticky top-0 z-50 backdrop-blur supports-[backdrop-filter]:bg-white/60 dark:supports-[backdrop-filter]:bg-neutral-900/40 border-b border-neutral-200 dark:border-neutral-800">
+        <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <h1 class="text-lg font-semibold tracking-tight">Prompt Filler</h1>
+                <span class="hidden sm:inline text-sm text-neutral-500 dark:text-neutral-400"
+                    x-text="appVersion"></span>
+            </div>
+            <div class="flex items-center gap-2">
+                <button @click="toggleDark()"
+                    class="rounded-2xl px-3 py-2 text-sm border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800">
+                    <span x-text="dark ? 'Light mode' : 'Dark mode'"></span>
+                </button>
+                <a href="https://github.com/alnahian2003/prompt-filler" target="_blank"
+                    class=" sm:inline rounded-2xl px-3 py-2 text-sm border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800">View
+                    on Github</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Left: Input composer -->
+        <section class="space-y-4">
+            <div
+                class="rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-neutral-900/60 shadow-soft">
+                <div class="p-4 sm:p-6 border-b border-neutral-200 dark:border-neutral-800">
+                    <div class="flex items-center justify-between">
+                        <h2 class="text-base sm:text-lg font-semibold">Your prompt</h2>
+                        <div class="flex items-center gap-2 text-xs sm:text-sm">
+                            <button @click="resetAll()"
+                                class="rounded-full border border-neutral-200 dark:border-neutral-800 px-3 py-1 hover:bg-red-100 dark:hover:bg-red-950/60 scale-100 hover:scale-95 transition"
+                                type="button">🧹
+                                Reset</button>
+                        </div>
+                    </div>
+
+                    <!-- Demo Prompts -->
+                    <div id="examples" class="mt-2">
+                        <h4 class="text-xs text-gray-500 font-semibold mb-2">Try these examples: </h4>
+                        <div class="flex gap-2 flex items-center justify-start flex-wrap">
+                            <template x-for="(example, index) in examples">
+                                <button @click="pasteExamples(index)"
+                                    class="rounded-full border border-neutral-200 dark:border-neutral-800 px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-xs"
+                                    x-text="example.name"></button>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-4 sm:p-6 space-y-3">
+                    <textarea x-model.trim="raw" @input="parse()"
+                        class="w-full h-56 sm:h-72 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/60 dark:bg-neutral-950/40 p-4 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                        placeholder="Paste or type your prompt. Use placeholders like [your name], [company], [role], [email] ..."
+                        autofocus></textarea>
+                    <div class="flex flex-wrap items-center gap-3 text-sm">
+                        <div
+                            class="rounded-full border border-neutral-200 dark:border-neutral-800 px-3 py-1 bg-neutral-50 dark:bg-neutral-900">
+                            Detected fields: <span class="font-medium" x-text="placeholders.length"></span></div>
+                        <button @click="copyRaw()"
+                            class="rounded-full border border-neutral-200 dark:border-neutral-800 px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800">Copy
+                            raw</button>
+                        <button @click="saveToLocal()"
+                            class="rounded-full border border-neutral-200 dark:border-neutral-800 px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800">Save</button>
+                        <button @click="loadFromLocal()"
+                            class="rounded-full border border-neutral-200 dark:border-neutral-800 px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800">Load</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dynamic Fields -->
+            <div
+                class="rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-neutral-900/60 shadow-soft">
+                <div
+                    class="p-4 sm:p-6 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
+                    <h3 class="text-base sm:text-lg font-semibold">Fill the placeholders</h3>
+                    <div class="text-sm text-neutral-500 dark:text-neutral-400" x-show="placeholders.length === 0">No
+                        placeholders detected yet</div>
+                </div>
+                <div class="p-4 sm:p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <template x-for="ph in placeholders" :key="ph.key">
+                        <label class="block">
+                            <span class="text-sm font-medium"><span class="capitalize" x-text="ph.label"></span></span>
+                            <input type="text" x-model="values[ph.key]" @input="apply()"
+                                class="mt-1 w-full rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white/60 dark:bg-neutral-950/40 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                                :placeholder="ph.placeholder">
+                        </label>
+                    </template>
+                </div>
+                <div class="px-4 sm:px-6 pb-6" x-show="placeholders.length">
+                    <button @click="clearValues()"
+                        class="rounded-2xl px-3 py-2 text-sm border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800">Clear
+                        values</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Right: Preview and Actions -->
+        <section class="space-y-4">
+            <div
+                class="rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-neutral-900/60 shadow-soft">
+                <div
+                    class="p-4 sm:p-6 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
+                    <h3 class="text-base sm:text-lg font-semibold">Preview</h3>
+                    <div class="flex items-center gap-2">
+                        <label class="text-sm flex items-center gap-2">
+                            <input type="checkbox" class="size-4 rounded border-neutral-300" x-model="keepTokens">
+                            keep unresolved tokens
+                        </label>
+                    </div>
+                </div>
+                <div class="p-4 sm:p-6 space-y-3">
+                    <div
+                        class="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/60 dark:bg-neutral-950/40 p-4 min-h-40 leading-relaxed whitespace-pre-line">
+                        <template x-if="output.length">
+                            <div x-html="highlight(output)"></div>
+                        </template>
+                        <template x-if="!output.length">
+                            <p class="text-neutral-500 dark:text-neutral-400">Your filled prompt will appear here.</p>
+                        </template>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button @click="copyOutput()"
+                            class="rounded-2xl px-3 py-2 text-sm border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800">Copy
+                            filled prompt</button>
+                        <button @click="downloadJSON()"
+                            class="rounded-2xl px-3 py-2 text-sm border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800">Download
+                            as JSON</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Guide -->
+            <div
+                class="rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-gradient-to-br from-neutral-50 to-white dark:from-neutral-900 dark:to-neutral-950 shadow-soft p-6">
+                <h4 class="font-semibold mb-2">How it works</h4>
+                <ol class="text-sm space-y-2 list-decimal list-inside text-neutral-700 dark:text-neutral-300">
+                    <li>Paste or type a prompt with placeholders in square brackets like [your name] or [email].</li>
+                    <li>The app detects unique placeholders and builds input fields for each one.</li>
+                    <li>Type your values. The preview updates in real time.</li>
+                    <li>Copy the final text or export your values as JSON.</li>
+                </ol>
+            </div>
+        </section>
+    </main>
+
+    <footer class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pb-10 text-xs text-neutral-500 dark:text-neutral-400">
+        Data persists in your browser only. Made with 💖 by <a class="font-bold italic"
+            href="https://github.com/alnahian2003" target="_blank">Al Nahian</a>
+    </footer>
+
+    <script>
+        function app() {
+            return {
+                appVersion: 'v1.0.0',
+                dark: window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches,
+                raw: '',
+                placeholders: [], // [{ key, label, placeholder }]
+                values: {},
+                output: '',
+                keepTokens: true,
+                examples: [
+                    {
+                        name: 'Email Outreach',
+                        text: `Hi [recipient name],
+
+I hope this email finds you well. My name is [your name] and I'm reaching out from [your company].
+
+I noticed that [specific observation about their company] and thought there might be an opportunity for us to collaborate.
+
+[Your company] specializes in [your service/product], and I believe we could help [recipient company] achieve [specific benefit].
+
+Would you be available for a brief 15-minute call next week to discuss this further?
+
+Best regards,
+[your name]
+[your title]
+[your email]
+[your phone]`
+                    },
+                    {
+                        name: 'Job Application',
+                        text: `Dear [hiring manager name],
+
+I am writing to express my strong interest in the [job title] position at [company name]. With [years of experience] years of experience in [relevant field], I am confident that I would be a valuable addition to your team.
+
+In my previous role at [previous company], I successfully [specific achievement] which resulted in [quantifiable result]. My expertise in [key skill 1], [key skill 2], and [key skill 3] aligns perfectly with the requirements outlined in your job posting.
+
+I am particularly drawn to [company name] because of [specific reason about company]. I would welcome the opportunity to discuss how my background in [relevant area] can contribute to [specific company goal/project].
+
+Thank you for considering my application. I look forward to hearing from you.
+
+Sincerely,
+[your full name]
+[your email]
+[your phone number]`
+                    },
+                    {
+                        name: 'Social Media Post',
+                        text: `🚀 Excited to share that [your company] just launched [product/service name]!
+
+After [time period] of development, we're finally ready to help [target audience] achieve [main benefit].
+
+Key features include:
+✅ [feature 1]
+✅ [feature 2]
+✅ [feature 3]
+
+Special launch offer: [discount/offer details] - use code [promo code]
+
+Check it out at [website url] and let me know what you think!
+
+#[hashtag1] #[hashtag2] #[hashtag3] #[your industry]`
+                    }
+                ],
+
+                init() {
+                    this.loadTheme();
+                    this.loadFromLocal();
+                    // if (!this.raw) this.raw = this.examples[0].text;
+                    this.parse();
+                },
+
+                toggleDark() {
+                    this.dark = !this.dark;
+                    this.saveTheme();
+                },
+                saveTheme() { localStorage.setItem('pf.theme', this.dark ? 'dark' : 'light'); },
+                loadTheme() {
+                    const t = localStorage.getItem('pf.theme');
+                    if (t) this.dark = t === 'dark';
+                },
+
+                pasteExamples(i) {
+                    this.raw = this.examples[i].text || '';
+                    this.parse();
+                },
+
+                parse() {
+                    // Match [anything] but not nested brackets
+                    const rx = /\[([^\[\]]+?)\]/g;
+                    const seen = new Map();
+                    let m;
+                    while ((m = rx.exec(this.raw)) !== null) {
+                        const label = m[1].trim();
+                        const key = this.slug(label);
+                        if (!seen.has(key)) {
+                            seen.set(key, { key, label, placeholder: `Enter ${label.toLowerCase()}` });
+                        }
+                    }
+                    this.placeholders = Array.from(seen.values());
+
+                    // Preserve existing values when possible
+                    const nextValues = {};
+                    for (const ph of this.placeholders) {
+                        nextValues[ph.key] = this.values[ph.key] ?? '';
+                    }
+                    this.values = nextValues;
+
+                    this.apply();
+                },
+
+                apply() {
+                    if (!this.raw) {
+                        this.output = '';
+                        this.filled = '';
+                        return;
+                    }
+                    this.output = this.raw; // raw text with brackets
+
+                    const rx = /\[([^\[\]]+?)\]/g;
+                    const self = this;
+                    this.filled = this.raw.replace(rx, function (m, label) {
+                        const key = self.slug(label.trim());
+                        const val = self.values[key] ?? '';
+                        if (val && val.length) {
+                            return val;
+                        }
+                        return self.keepTokens ? m : '';
+                    });
+
+                    this.persistValues();
+                },
+
+                highlight(text) {
+                    const rx = /\[([^\[\]]+?)\]/g;
+                    const self = this;
+                    return text.replace(rx, function (m, label) {
+                        const key = self.slug(label.trim());
+                        const val = self.values[key] ?? '';
+                        if (val && val.length) {
+                            // Show the user-provided value highlighted as filled
+                            return `<span class="token token-filled">${val}</span>`;
+                        }
+                        // Keep the original placeholder if unresolved
+                        return `<span class="token token-missing">${m}</span>`;
+                    });
+                },
+
+                slug(label) {
+                    return label
+                        .toLowerCase()
+                        .normalize('NFKD')
+                        .replace(/[^a-z0-9]+/g, '_')
+                        .replace(/^_|_$/g, '');
+                },
+
+                clearValues() { for (const k in this.values) this.values[k] = ''; this.apply(); },
+                copyRaw() { navigator.clipboard.writeText(this.raw); this.toast('😀 Raw prompt copied'); },
+                copyOutput() { navigator.clipboard.writeText(this.filled || this.raw); this.toast('🤩 Filled prompt copied'); },
+
+                downloadJSON() {
+                    const data = {
+                        prompt: this.raw,
+                        values: this.values,
+                        filled: this.output,
+                        exported_at: new Date().toISOString()
+                    };
+                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url; a.download = 'prompt-filler.json'; a.click();
+                    URL.revokeObjectURL(url);
+                },
+
+                saveToLocal() {
+                    localStorage.setItem('pf.raw', this.raw);
+                    localStorage.setItem('pf.values', JSON.stringify(this.values));
+                    this.toast('✅ Saved to browser');
+                },
+                loadFromLocal() {
+                    const r = localStorage.getItem('pf.raw');
+                    const v = localStorage.getItem('pf.values');
+                    if (r) this.raw = r;
+                    if (v) {
+                        try { this.values = JSON.parse(v) || {}; } catch { this.values = {}; }
+                    }
+                },
+                persistValues() { localStorage.setItem('pf.values', JSON.stringify(this.values)); },
+
+                resetAll() {
+                    this.raw = '';
+                    this.values = {};
+                    this.placeholders = [];
+                    this.output = '';
+                    localStorage.removeItem('pf.raw');
+                    localStorage.removeItem('pf.values');
+                },
+
+                toast(msg) {
+                    const el = document.createElement('div');
+                    el.textContent = msg;
+                    el.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 rounded-full px-4 py-2 text-sm border border-neutral-200 dark:border-neutral-800 bg-white/90 dark:bg-neutral-900/90 shadow-soft';
+                    document.body.appendChild(el);
+                    setTimeout(() => el.remove(), 2000);
+                }
+            }
+        }
+    </script>
+</body>
+
+</html>
