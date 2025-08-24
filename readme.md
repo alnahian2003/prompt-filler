@@ -1,5 +1,7 @@
 # Prompt Filler
 
+![Preview](screenshot.png)
+
 Prompt Filler is a modern tool to manage and fill dynamic AI prompts with placeholders. Built with **Tailwind CSS v4** and **Alpine.js**, it detects placeholders like `[your name]`, `[email]`, `[company]` in your prompt, generates input fields automatically, and shows a live preview with smart highlighting.
 
 ## Features
