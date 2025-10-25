@@ -73,15 +73,15 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        /* Helpful caret styling for big textarea */
-        textarea::placeholder {
-            opacity: .6;
-        }
-
+        /* Only custom CSS that cannot be replicated with Tailwind */
+        
+        /* Token color-mix backgrounds (Tailwind doesn't support color-mix in utilities) */
         .token {
             background: color-mix(in oklab, CanvasText 12%, transparent);
-            border-radius: .5rem;
-            padding: .125rem .375rem;
+        }
+
+        .token:hover {
+            background: color-mix(in oklab, CanvasText 20%, transparent);
         }
 
         .token-missing {
@@ -89,18 +89,121 @@
             outline-offset: 0.1px;
         }
 
+        .token-missing:hover {
+            outline-color: color-mix(in oklab, #ff0000 60%, transparent);
+        }
+
         .token-filled {
             outline: 2px dashed color-mix(in oklab, #00cd48 40%, transparent);
             outline-offset: 0.1px;
+        }
+
+        .token-filled:hover {
+            outline-color: color-mix(in oklab, #00cd48 60%, transparent);
+        }
+
+        /* Custom animations */
+        @keyframes pulse-red {
+            0%, 100% { outline-color: color-mix(in oklab, #ff0000 40%, transparent); }
+            50% { outline-color: color-mix(in oklab, #ff0000 20%, transparent); }
+        }
+
+        @keyframes slideInUp {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes shimmer {
+            0% { background-position: -1000px 0; }
+            100% { background-position: 1000px 0; }
+        }
+
+        .animate-slide-in {
+            animation: slideInUp 0.3s ease-out;
+        }
+
+        .animate-fade-in {
+            animation: fadeIn 0.2s ease-out;
+        }
+
+        .animate-pulse-red {
+            animation: pulse-red 2s ease-in-out infinite;
+        }
+
+        /* Skeleton shimmer effect (gradient animation) */
+        .skeleton {
+            background: linear-gradient(90deg, 
+                color-mix(in oklab, CanvasText 5%, transparent) 25%, 
+                color-mix(in oklab, CanvasText 10%, transparent) 50%, 
+                color-mix(in oklab, CanvasText 5%, transparent) 75%
+            );
+            background-size: 1000px 100%;
+            animation: shimmer 2s infinite;
+        }
+
+        /* Custom tooltip for buttons only (not for token spans) */
+        button[title]:hover::after {
+            content: attr(title);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 0.5rem 0.75rem;
+            background: rgba(255, 255, 255, 0.95);
+            color: #171717;
+            font-size: 0.75rem;
+            border-radius: 0.375rem;
+            white-space: nowrap;
+            pointer-events: none;
+            z-index: 50;
+            margin-bottom: 0.25rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        /* Dark mode support for button tooltips */
+        .dark button[title]:hover::after {
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            box-shadow: 0 4px 6px -1px rgba(255, 255, 255, 0.1), 0 2px 4px -1px rgba(255, 255, 255, 0.06);
         }
     </style>
 </head>
 
 <body :class="{ 'dark bg-neutral-950 text-neutral-100': dark, 'bg-neutral-50 text-neutral-900': !dark }"
-    class="min-h-full">
+    class="min-h-full"
+    @keydown.window.ctrl.s.prevent="saveToLocal()"
+    @keydown.window.meta.s.prevent="saveToLocal()"
+    @keydown.window.ctrl.shift.c.prevent="copyRaw()"
+    @keydown.window.meta.shift.c.prevent="copyRaw()"
+    @keydown.window.ctrl.shift.v.prevent="copyOutput()"
+    @keydown.window.meta.shift.v.prevent="copyOutput()"
+    @keydown.window.ctrl.shift.x.prevent="clearValues()"
+    @keydown.window.meta.shift.x.prevent="clearValues()">
+    
+    <!-- Toast notifications -->
+    <template x-if="toastMessage">
+        <div x-show="toastVisible" x-transition
+            :class="toastClasses"
+            class="fixed bottom-6 left-1/2 -translate-x-1/2 rounded-full px-4 py-2 text-sm border shadow-lg z-50"
+            x-text="toastMessage"></div>
+    </template>
+    
+    <!-- Progress bar removed per user request -->
+    
     <!-- App Shell -->
     <header
-        class="sticky top-0 z-50 backdrop-blur supports-[backdrop-filter]:bg-white/60 dark:supports-[backdrop-filter]:bg-neutral-900/40 border-b border-neutral-200 dark:border-neutral-800">
+        class="sticky top-0 z-50 backdrop-blur supports-[backdrop-filter]:bg-white/60 dark:supports-[backdrop-filter]:bg-neutral-900/40 border-b border-neutral-200 dark:border-neutral-800 transition-all duration-300">
         <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             <div class="flex items-center gap-3">
                 <h1 class="text-lg font-semibold tracking-tight">Prompt Filler</h1>
@@ -140,7 +243,7 @@
                         <h2 class="text-base sm:text-lg font-semibold">Your prompt</h2>
                         <div class="flex items-center gap-2 text-xs sm:text-sm">
                             <button @click="resetAll()"
-                                class="rounded-full border border-neutral-200 dark:border-neutral-800 px-3 py-1 hover:bg-red-100 dark:hover:bg-red-950/60 scale-100 hover:scale-95 transition"
+                                class="rounded-full border border-neutral-200 dark:border-neutral-800 px-3 py-1 hover:bg-red-100 dark:hover:bg-red-950/60 scale-100 hover:scale-95 transition-all duration-200 active:scale-100"
                                 type="button">🧹
                                 Reset</button>
                         </div>
@@ -160,47 +263,141 @@
                 </div>
                 <div class="p-4 sm:p-6 space-y-3">
                     <textarea x-model.trim="raw" @input="parse()"
-                        class="w-full h-56 sm:h-72 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/60 dark:bg-neutral-950/40 p-4 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                        class="w-full h-56 sm:h-72 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/60 dark:bg-neutral-950/40 p-4 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 placeholder:opacity-60 transition-all duration-200 focus:scale-[1.01]"
                         placeholder="Paste or type your prompt. Use placeholders like [your name], [company], [role], [email] ..."
                         autofocus></textarea>
+                    
+                    <!-- Placeholder format selectors -->
+                    <div class="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-gradient-to-br from-neutral-50 to-white dark:from-neutral-900/50 dark:to-neutral-900/30 p-4">
+                        <div class="flex items-center justify-between mb-3">
+                            <h4 class="text-sm font-semibold text-neutral-700 dark:text-neutral-300">Detect Placeholders Using</h4>
+                            <button @click="resetFormats()" class="text-xs text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 underline">Reset</button>
+                        </div>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                            <label class="relative flex items-center gap-2 px-3 py-2 rounded-xl border transition-all cursor-pointer"
+                                :class="formats.brackets ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30' : 'border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-600'">
+                                <input type="checkbox" class="size-4 rounded border-neutral-300 accent-indigo-600" x-model="formats.brackets"
+                                    @change="parse()">
+                                <div class="flex flex-col">
+                                    <span class="text-xs font-medium text-neutral-800 dark:text-neutral-200">[name]</span>
+                                    <span class="text-[10px] text-neutral-500 dark:text-neutral-400">Square brackets</span>
+                                </div>
+                            </label>
+                            <label class="relative flex items-center gap-2 px-3 py-2 rounded-xl border transition-all cursor-pointer"
+                                :class="formats.handlebars ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30' : 'border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-600'">
+                                <input type="checkbox" class="size-4 rounded border-neutral-300 accent-indigo-600" x-model="formats.handlebars"
+                                    @change="parse()">
+                                <div class="flex flex-col">
+                                    <span class="text-xs font-medium text-neutral-800 dark:text-neutral-200">{{name}}</span>
+                                    <span class="text-[10px] text-neutral-500 dark:text-neutral-400">Handlebars</span>
+                                </div>
+                            </label>
+                            <label class="relative flex items-center gap-2 px-3 py-2 rounded-xl border transition-all cursor-pointer"
+                                :class="formats.tpl ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30' : 'border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-600'">
+                                <input type="checkbox" class="size-4 rounded border-neutral-300 accent-indigo-600" x-model="formats.tpl"
+                                    @change="parse()">
+                                <div class="flex flex-col">
+                                    <span class="text-xs font-medium text-neutral-800 dark:text-neutral-200">${"${name}"}</span>
+                                    <span class="text-[10px] text-neutral-500 dark:text-neutral-400">Template literal</span>
+                                </div>
+                            </label>
+                            <label class="relative flex items-center gap-2 px-3 py-2 rounded-xl border transition-all cursor-pointer"
+                                :class="formats.braces ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30' : 'border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-600'">
+                                <input type="checkbox" class="size-4 rounded border-neutral-300 accent-indigo-600" x-model="formats.braces"
+                                    @change="parse()">
+                                <div class="flex flex-col">
+                                    <span class="text-xs font-medium text-neutral-800 dark:text-neutral-200">{name}</span>
+                                    <span class="text-[10px] text-neutral-500 dark:text-neutral-400">Simple braces</span>
+                                </div>
+                            </label>
+                        </div>
+                        <div class="flex items-center gap-2 pt-2 border-t border-neutral-200 dark:border-neutral-800">
+                            <span class="text-xs font-medium text-neutral-600 dark:text-neutral-400">Custom:</span>
+                            <input type="text" x-model="customOpen" @input="parse()"
+                                class="w-20 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                placeholder="<<">
+                            <span class="text-neutral-400 dark:text-neutral-500">name</span>
+                            <input type="text" x-model="customClose" @input="parse()"
+                                class="w-20 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                placeholder=">>">
+                            <span class="text-[10px] text-neutral-500 dark:text-neutral-400 italic">e.g., &lt;&lt;name&gt;&gt; or %%name%%</span>
+                        </div>
+                    </div>
+
                     <div class="flex flex-wrap items-center gap-3 text-sm">
                         <div
-                            class="rounded-full border border-neutral-200 dark:border-neutral-800 px-3 py-1 bg-neutral-50 dark:bg-neutral-900">
-                            Detected fields: <span class="font-medium" x-text="placeholders.length"></span></div>
-                        <button @click="copyRaw()"
-                            class="rounded-full border border-neutral-200 dark:border-neutral-800 px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800">Copy
-                            raw</button>
-                        <button @click="saveToLocal()"
-                            class="rounded-full border border-neutral-200 dark:border-neutral-800 px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800">Save</button>
-                        <button @click="loadFromLocal()"
-                            class="rounded-full border border-neutral-200 dark:border-neutral-800 px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800">Load</button>
+                            class="rounded-full border border-neutral-200 dark:border-neutral-800 px-3 py-1 bg-neutral-50 dark:bg-neutral-900 transition-all duration-300"
+                            :class="placeholders.length > 0 ? 'animate-slide-in' : ''">
+                            Detected fields: <span class="font-medium inline-flex items-center gap-1" x-text="placeholders.length"></span>
+                            <span x-show="placeholders.length > 0" class="ml-1">
+                                <span x-show="getFilledCount() === placeholders.length" class="text-green-600 dark:text-green-400">✓</span>
+                                <span x-show="getFilledCount() < placeholders.length && getFilledCount() > 0" class="text-amber-600 dark:text-amber-400" x-text="`(${getFilledCount()}/${placeholders.length})`"></span>
+                            </span>
+                        </div>
+                        <button @click="copyRaw()" title="Copy raw prompt (Ctrl+Shift+C)"
+                            class="rounded-full border border-neutral-200 dark:border-neutral-800 px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0">
+                            📋 Copy raw</button>
+                        <button @click="saveToLocal()" title="Save to browser (Ctrl+S)"
+                            class="rounded-full border border-neutral-200 dark:border-neutral-800 px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0">
+                            💾 Save</button>
+                        <button @click="loadFromLocal()" title="Load from browser"
+                            class="rounded-full border border-neutral-200 dark:border-neutral-800 px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0">
+                            📂 Load</button>
                     </div>
                 </div>
             </div>
 
             <!-- Dynamic Fields -->
             <div
-                class="rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-neutral-900/60 shadow-soft">
+                class="rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-neutral-900/60 shadow-soft transition-all duration-300"
+                :class="placeholders.length > 0 ? 'animate-slide-in' : ''">
                 <div
                     class="p-4 sm:p-6 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
                     <h3 class="text-base sm:text-lg font-semibold">Fill the placeholders</h3>
-                    <div class="text-sm text-neutral-500 dark:text-neutral-400" x-show="placeholders.length === 0">No
-                        placeholders detected yet</div>
+                    <div class="text-sm text-neutral-500 dark:text-neutral-400 flex items-center gap-2" x-show="placeholders.length === 0">
+                        <svg class="size-4 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                        No placeholders detected yet
+                    </div>
                 </div>
-                <div class="p-4 sm:p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <template x-for="ph in placeholders" :key="ph.key">
-                        <label class="block">
-                            <span class="text-sm font-medium"><span class="capitalize" x-text="ph.label"></span></span>
-                            <input type="text" x-model="values[ph.key]" @input="apply()"
-                                class="mt-1 w-full rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white/60 dark:bg-neutral-950/40 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                <div class="p-4 sm:p-6 grid grid-cols-1 sm:grid-cols-2 gap-4" x-show="placeholders.length > 0">
+                    <template x-for="(ph, index) in placeholders" :key="ph.key">
+                        <label class="block animate-fade-in" :style="`animation-delay: ${index * 0.05}s`">
+                            <span class="text-sm font-medium flex items-center gap-2">
+                                <span class="capitalize" x-text="ph.label"></span>
+                                <span x-show="values[ph.key]" class="text-green-600 dark:text-green-400 text-xs">✓</span>
+                            </span>
+                            <input type="text" :id="'input-' + ph.key" x-model="values[ph.key]" 
+                                @input="apply()"
+                                @keydown.enter="focusNextInput($event)"
+                                class="mt-1 w-full rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white/60 dark:bg-neutral-950/40 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 transition-all duration-200 focus:scale-[1.01]"
                                 :placeholder="ph.placeholder">
                         </label>
                     </template>
                 </div>
-                <div class="px-4 sm:px-6 pb-6" x-show="placeholders.length">
-                    <button @click="clearValues()"
-                        class="rounded-2xl px-3 py-2 text-sm border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800">Clear
-                        values</button>
+                
+                <!-- Empty state -->
+                <div x-show="placeholders.length === 0" class="p-8 sm:p-12 text-center opacity-60 hover:opacity-80 transition-opacity duration-300">
+                    <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-neutral-100 dark:bg-neutral-800 mb-4">
+                        <svg class="size-8 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                    </div>
+                    <p class="text-neutral-600 dark:text-neutral-400 text-sm">
+                        Start typing your prompt above with placeholders like <span class="font-mono text-xs bg-neutral-200 dark:bg-neutral-800 px-2 py-1 rounded">[your name]</span>
+                    </p>
+                </div>
+                
+                <div class="px-4 sm:px-6 pb-6 flex items-center gap-2" x-show="placeholders.length">
+                    <button @click="clearValues()" title="Clear all values (Ctrl+Shift+X)"
+                        class="rounded-2xl px-3 py-2 text-sm border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0">
+                        ✨ Clear values
+                    </button>
+                    <button @click="fillExample()" title="Fill with example data" x-show="placeholders.length > 0"
+                        class="rounded-2xl px-3 py-2 text-sm border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:border-indigo-300 dark:hover:border-indigo-700 text-indigo-600 dark:text-indigo-400 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0">
+                        🎲 Fill example
+                    </button>
                 </div>
             </div>
         </section>
@@ -208,34 +405,69 @@
         <!-- Right: Preview and Actions -->
         <section class="space-y-4">
             <div
-                class="rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-neutral-900/60 shadow-soft">
+                class="rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-neutral-900/60 shadow-soft transition-all duration-300">
                 <div
                     class="p-4 sm:p-6 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
-                    <h3 class="text-base sm:text-lg font-semibold">Preview</h3>
-                    <div class="flex items-center gap-2">
-                        <label class="text-sm flex items-center gap-2">
-                            <input type="checkbox" class="size-4 rounded border-neutral-300" x-model="keepTokens">
-                            keep unresolved tokens
-                        </label>
+                    <h3 class="text-base sm:text-lg font-semibold flex items-center gap-2">
+                        Preview
+                        <span x-show="getFilledCount() === placeholders.length && placeholders.length > 0" class="text-xs px-2 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 animate-fade-in">
+                            Complete!
+                        </span>
+                    </h3>
+                    <div class="text-xs text-neutral-500 dark:text-neutral-400" x-show="placeholders.length > 0">
+                        <span x-text="`${getFilledCount()}/${placeholders.length} filled`"></span>
                     </div>
                 </div>
                 <div class="p-4 sm:p-6 space-y-3">
                     <div
-                        class="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/60 dark:bg-neutral-950/40 p-4 min-h-40 leading-relaxed whitespace-pre-line">
+                        class="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/60 dark:bg-neutral-950/40 p-4 min-h-24 leading-relaxed whitespace-pre-line relative group">
                         <template x-if="output.length">
-                            <div x-html="highlight(output)"></div>
+                            <div x-html="highlight(output)" class="animate-fade-in"></div>
                         </template>
                         <template x-if="!output.length">
-                            <p class="text-neutral-500 dark:text-neutral-400">Your filled prompt will appear here.</p>
+                            <div class="text-center py-6 opacity-60 hover:opacity-80 transition-opacity duration-300">
+                                <div class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-neutral-100 dark:bg-neutral-800 mb-2">
+                                    <svg class="size-6 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                                    </svg>
+                                </div>
+                                <p class="text-neutral-500 dark:text-neutral-400">Your filled prompt will appear here.</p>
+                                <p class="text-xs text-neutral-400 dark:text-neutral-500 mt-2">Click on placeholders to jump to their fields</p>
+                            </div>
                         </template>
+                        
+                        <!-- Quick copy button that appears on hover (styled like other buttons) -->
+                        <button x-show="output.length" @click="copyOutput()"
+                            class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-all duration-200 rounded-lg p-2 text-sm border border-neutral-200 dark:border-neutral-800 bg-white/90 dark:bg-neutral-900/60 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                            title="Quick copy (Ctrl+Shift+V)">📋
+                        </button>
                     </div>
+
                     <div class="flex flex-wrap items-center gap-2">
-                        <button @click="copyOutput()"
-                            class="rounded-2xl px-3 py-2 text-sm border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800">Copy
-                            filled prompt</button>
-                        <button @click="downloadJSON()"
-                            class="rounded-2xl px-3 py-2 text-sm border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800">Download
-                            as JSON</button>
+                        <button @click="copyOutput()" title="Copy filled prompt (Ctrl+Shift+V)"
+                            class="rounded-2xl px-3 py-2 text-sm border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0">
+                            📋 Copy filled prompt
+                        </button>
+                        <button @click="downloadJSON()" title="Download as JSON file"
+                            class="rounded-2xl px-3 py-2 text-sm border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700 transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0">
+                            💾 Download JSON
+                        </button>
+                    </div>
+                    
+                    <!-- Unfilled placeholder handling option -->
+                    <div class="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/30 p-3">
+                        <label class="flex items-start gap-3 cursor-pointer group">
+                            <input type="checkbox" class="mt-0.5 size-4 rounded border-neutral-300 accent-indigo-600 transition-all duration-200" x-model="keepTokens" @change="apply()">
+                            <div class="flex-1">
+                                <div class="text-sm font-medium text-neutral-700 dark:text-neutral-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors duration-200">
+                                    Show unfilled placeholders in output
+                                </div>
+                                <p class="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                                    When checked, placeholders you haven't filled yet (like <span class="font-mono">[name]</span>) will appear in the copied text. Uncheck to hide them completely.
+                                </p>
+                            </div>
+                        </label>
                     </div>
                 </div>
             </div>
@@ -245,9 +477,9 @@
                 class="rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-gradient-to-br from-neutral-50 to-white dark:from-neutral-900 dark:to-neutral-950 shadow-soft p-6">
                 <h4 class="font-semibold mb-2">How it works</h4>
                 <ol class="text-sm space-y-2 list-decimal list-inside text-neutral-700 dark:text-neutral-300">
-                    <li>Paste or type a prompt with placeholders in square brackets like [your name] or [email].</li>
-                    <li>The app detects unique placeholders and builds input fields for each one.</li>
-                    <li>Type your values. The preview updates in real time.</li>
+                    <li>Paste or type a prompt with placeholders. Enable the formats you want (square brackets, handlebars `{{}}`, template `${}`, simple `{}`, or a custom open/close pair).</li>
+                    <li>The app detects unique placeholders across the enabled formats and builds input fields for each one.</li>
+                    <li>Type your values. The preview updates in real time and highlights filled/unfilled tokens.</li>
                     <li>Copy the final text or export your values as JSON.</li>
                 </ol>
             </div>
@@ -260,15 +492,55 @@
     </footer>
 
     <script>
+        /**
+         * Global function to focus on a placeholder input field
+         * @param {string} key - The slugified key of the placeholder
+         */
+        window.focusPlaceholder = function(key) {
+            const input = document.getElementById('input-' + key);
+            if (!input) return;
+            
+            input.focus();
+            input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            
+            // Add visual feedback with a temporary ring
+            input.classList.add('ring-2', 'ring-indigo-500');
+            setTimeout(() => {
+                input.classList.remove('ring-2', 'ring-indigo-500');
+            }, 1000);
+        };
+
+        /**
+         * Main Alpine.js application
+         */
         function app() {
             return {
-                appVersion: 'v1.0.0',
+                // App state
+                appVersion: 'v1.1.0',
                 dark: window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches,
                 raw: '',
-                placeholders: [], // [{ key, label, placeholder }]
+                placeholders: [], // Array of { key, label, placeholder }
                 values: {},
                 output: '',
                 keepTokens: true,
+                isProcessing: false,
+
+                // Toast state
+                toastMessage: '',
+                toastVisible: false,
+                toastClasses: '',
+
+                // Placeholder format configuration
+                formats: {
+                    brackets: true,
+                    handlebars: false,
+                    tpl: false,
+                    braces: false
+                },
+                customOpen: '',
+                customClose: '',
+
+                // Example prompts
                 examples: [
                     {
                         name: 'Email Outreach',
@@ -324,89 +596,178 @@ Check it out at [website url] and let me know what you think!
                     }
                 ],
 
+                // Lifecycle methods
                 init() {
                     this.loadTheme();
                     this.loadFromLocal();
-                    // if (!this.raw) this.raw = this.examples[0].text;
                     this.parse();
                 },
 
+                /**
+                 * Focus next input on Enter key
+                 */
+                focusNextInput(event) {
+                    const inputs = Array.from(document.querySelectorAll('input[type="text"]'));
+                    const currentIndex = inputs.indexOf(event.target);
+                    const nextInput = inputs[currentIndex + 1];
+                    
+                    if (nextInput) {
+                        nextInput.focus();
+                    }
+                },
+
+                /**
+                 * Get count of filled placeholders
+                 */
+                getFilledCount() {
+                    return this.placeholders.filter(ph => {
+                        const value = this.values[ph.key];
+                        return value && value.trim().length > 0;
+                    }).length;
+                },
+
+                /**
+                 * Fill placeholders with realistic example data - data-driven, zero if-blocks
+                 */
+                fillExample() {
+                    // Data-driven matching rules (order = priority)
+                    const MATCH_RULES = [
+                        // Names - specific to general
+                        { patterns: ['first', 'fname'], data: ['Alex', 'Jordan', 'Sarah', 'Michael', 'Emma', 'Chris', 'Taylor', 'Morgan'] },
+                        { patterns: ['last', 'lname', 'surname'], data: ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis'] },
+                        { patterns: ['name', 'sender', 'recipient', 'author', 'owner', 'creator', 'user'], data: ['Alex Morgan', 'Jordan Chen', 'Sarah Johnson', 'Michael Rodriguez', 'Emma Thompson', 'Chris Lee'] },
+                        
+                        // Contact - specific first
+                        { patterns: ['phone', 'mobile', 'tel'], data: ['+1 (555) 123-4567', '+1 (555) 987-6543', '+44 20 7123 4567', '+1 (650) 555-0123'] },
+                        { patterns: ['http', 'url', 'link'], data: ['https://example.com', 'https://startup.io/demo', 'https://innovation-labs.com/products'] },
+                        { patterns: ['website', 'site', 'domain'], data: ['example.com', 'techstartup.io', 'innovation-labs.com', 'digitaldynamics.co'] },
+                        { patterns: ['email', 'mail', 'contact'], data: ['alex.morgan@example.com', 'jordan@techstartup.io', 'sarah.j@company.com', 'team@innovation.co'] },
+                        
+                        // Organizations
+                        { patterns: ['company', 'organization', 'org', 'business', 'firm', 'agency', 'corp'], data: ['TechVision Inc.', 'Innovation Labs', 'Digital Dynamics', 'CloudScale', 'DataFlow Systems'] },
+                        
+                        // Professional
+                        { patterns: ['title', 'role', 'position', 'job'], data: ['Senior Product Manager', 'Marketing Director', 'Lead Developer', 'Data Scientist', 'UX Designer', 'CEO'] },
+                        
+                        // Offerings
+                        { patterns: ['service'], data: ['Cloud Infrastructure', 'AI Solutions', 'Digital Marketing', 'Web Development', 'Data Analytics'] },
+                        { patterns: ['product', 'platform', 'tool', 'app', 'software'], data: ['SaaS Platform', 'Mobile App', 'Analytics Dashboard', 'CRM System', 'API Gateway'] },
+                        
+                        // Temporal - specific first
+                        { patterns: ['time', 'hour', 'meeting'], data: ['2:00 PM EST', '10:30 AM', '3:00 PM PST', '9:00 AM', '1:00 PM GMT'] },
+                        { patterns: ['duration', 'period', 'timeframe', 'timeline'], data: ['3 months', '6 weeks', '90 days', 'Quarter', '2 years'] },
+                        { patterns: ['date', 'day', 'deadline'], data: ['March 15, 2024', 'Next Tuesday', 'Q2 2024', 'April 1st', 'Next Wednesday'] },
+                        
+                        // Metrics
+                        { patterns: ['metric', 'kpi', 'stat', 'number', 'count', 'result', 'achievement'], data: ['45% increase in revenue', '10,000+ users', '99.9% uptime', '300% ROI', '85% satisfaction'] },
+                        
+                        // Locations - specific first
+                        { patterns: ['country', 'nation'], data: ['United States', 'United Kingdom', 'Canada', 'Germany', 'Australia'] },
+                        { patterns: ['city'], data: ['San Francisco', 'New York', 'London', 'Austin', 'Seattle', 'Boston'] },
+                        { patterns: ['location', 'place', 'address', 'office'], data: ['San Francisco, CA', 'New York, NY', 'London, UK', 'Austin, TX'] },
+                        
+                        // Marketing
+                        { patterns: ['discount', 'sale', 'savings', 'offer'], data: ['20% off', '50% discount', 'Buy one get one free', '$100 off'] },
+                        { patterns: ['code', 'promo', 'coupon', 'voucher'], data: ['LAUNCH2024', 'WELCOME50', 'SPRING25', 'SAVE20'] },
+                        { patterns: ['hashtag', 'tag'], data: ['TechInnovation', 'StartupLife', 'DigitalTransformation', 'SaaS'] },
+                        
+                        // Industries
+                        { patterns: ['industry', 'sector', 'field', 'domain', 'vertical'], data: ['SaaS', 'E-commerce', 'FinTech', 'HealthTech', 'EdTech'] },
+                        
+                        // Content
+                        { patterns: ['description', 'summary', 'overview'], data: ['innovative solutions that drive growth', 'cutting-edge technology for modern businesses', 'scalable platform for enterprise needs'] },
+                        { patterns: ['observation', 'notice', 'insight'], data: ['impressive growth trajectory', 'strong market presence', 'innovative approach to solving challenges'] },
+                        { patterns: ['benefit', 'advantage', 'value'], data: ['increased efficiency', 'reduced operational costs', 'improved user experience', 'faster time to market'] },
+                    ];
+                    
+                    let filledCount = 0;
+                    
+                    this.placeholders.forEach(ph => {
+                        // Skip if already filled
+                        if (this.values[ph.key]) return;
+                        
+                        const normalizedKey = ph.key.toLowerCase();
+                        
+                        // Find first matching rule (priority order, no if-blocks!)
+                        const matchedRule = MATCH_RULES.find(rule => 
+                            rule.patterns.some(pattern => normalizedKey.includes(pattern))
+                        );
+                        
+                        // Apply matched data or fallback (ternary, not if!)
+                        this.values[ph.key] = matchedRule 
+                            ? matchedRule.data[Math.floor(Math.random() * matchedRule.data.length)]
+                            : `Example ${ph.label}`;
+                        
+                        filledCount++;
+                    });
+                    
+                    this.apply();
+                    this.toast(`✨ Filled ${filledCount} field${filledCount !== 1 ? 's' : ''} with realistic data`, 2000, 'success');
+                },
+
+                // Theme management
                 toggleDark() {
                     this.dark = !this.dark;
                     this.saveTheme();
                 },
-                saveTheme() { localStorage.setItem('pf.theme', this.dark ? 'dark' : 'light'); },
-                loadTheme() {
-                    const t = localStorage.getItem('pf.theme');
-                    if (t) this.dark = t === 'dark';
+
+                saveTheme() {
+                    localStorage.setItem('pf.theme', this.dark ? 'dark' : 'light');
                 },
 
-                pasteExamples(i) {
-                    this.raw = this.examples[i].text || '';
+                loadTheme() {
+                    const theme = localStorage.getItem('pf.theme');
+                    if (theme) {
+                        this.dark = theme === 'dark';
+                    }
+                },
+
+                // Example management
+                pasteExamples(index) {
+                    if (!this.examples[index]) return;
+                    this.raw = this.examples[index].text || '';
                     this.parse();
                 },
 
-                parse() {
-                    // Match [anything] but not nested brackets
-                    const rx = /\[([^\[\]]+?)\]/g;
-                    const seen = new Map();
-                    let m;
-                    while ((m = rx.exec(this.raw)) !== null) {
-                        const label = m[1].trim();
-                        const key = this.slug(label);
-                        if (!seen.has(key)) {
-                            seen.set(key, { key, label, placeholder: `Enter ${label.toLowerCase()}` });
-                        }
-                    }
-                    this.placeholders = Array.from(seen.values());
-
-                    // Preserve existing values when possible
-                    const nextValues = {};
-                    for (const ph of this.placeholders) {
-                        nextValues[ph.key] = this.values[ph.key] ?? '';
-                    }
-                    this.values = nextValues;
-
-                    this.apply();
+                // Format configuration
+                resetFormats() {
+                    this.formats = {
+                        brackets: true,
+                        handlebars: false,
+                        tpl: false,
+                        braces: false
+                    };
+                    this.customOpen = '';
+                    this.customClose = '';
+                    this.parse();
                 },
 
-                apply() {
-                    if (!this.raw) {
-                        this.output = '';
-                        this.filled = '';
-                        return;
-                    }
-                    this.output = this.raw; // raw text with brackets
-
-                    const rx = /\[([^\[\]]+?)\]/g;
-                    const self = this;
-                    this.filled = this.raw.replace(rx, function (m, label) {
-                        const key = self.slug(label.trim());
-                        const val = self.values[key] ?? '';
-                        if (val && val.length) {
-                            return val;
-                        }
-                        return self.keepTokens ? m : '';
-                    });
-
-                    this.persistValues();
+                // Utility methods
+                /**
+                 * Escape special regex characters in a string
+                 * @param {string} str - String to escape
+                 * @returns {string} Escaped string
+                 */
+                escapeRegex(str) {
+                    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                 },
 
-                highlight(text) {
-                    const rx = /\[([^\[\]]+?)\]/g;
-                    const self = this;
-                    return text.replace(rx, function (m, label) {
-                        const key = self.slug(label.trim());
-                        const val = self.values[key] ?? '';
-                        if (val && val.length) {
-                            // Show the user-provided value highlighted as filled
-                            return `<span class="token token-filled">${val}</span>`;
-                        }
-                        // Keep the original placeholder if unresolved
-                        return `<span class="token token-missing">${m}</span>`;
-                    });
+                /**
+                 * Escape HTML entities to prevent XSS and display issues
+                 * @param {string} text - Text to escape
+                 * @returns {string} HTML-safe text
+                 */
+                escapeHtml(text) {
+                    const div = document.createElement('div');
+                    div.textContent = text;
+                    return div.innerHTML;
                 },
 
+                /**
+                 * Convert a label to a URL-safe slug
+                 * @param {string} label - Label to slugify
+                 * @returns {string} Slugified label
+                 */
                 slug(label) {
                     return label
                         .toLowerCase()
@@ -415,54 +776,364 @@ Check it out at [website url] and let me know what you think!
                         .replace(/^_|_$/g, '');
                 },
 
-                clearValues() { for (const k in this.values) this.values[k] = ''; this.apply(); },
-                copyRaw() { navigator.clipboard.writeText(this.raw); this.toast('😀 Raw prompt copied'); },
-                copyOutput() { navigator.clipboard.writeText(this.filled || this.raw); this.toast('🤩 Filled prompt copied'); },
-
-                downloadJSON() {
-                    const data = {
-                        prompt: this.raw,
-                        values: this.values,
-                        filled: this.output,
-                        exported_at: new Date().toISOString()
-                    };
-                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url; a.download = 'prompt-filler.json'; a.click();
-                    URL.revokeObjectURL(url);
+                /**
+                 * Clean up label for display - convert underscores, hyphens, dots to spaces
+                 * Also handles camelCase and PascalCase by adding spaces before capitals
+                 * @param {string} label - Raw label from placeholder
+                 * @returns {string} Cleaned label ready for capitalize
+                 */
+                cleanLabel(label) {
+                    return label
+                        // Convert camelCase/PascalCase to spaces (e.g., "senderName" -> "sender Name")
+                        .replace(/([a-z])([A-Z])/g, '$1 $2')
+                        // Convert underscores, hyphens, dots to spaces
+                        .replace(/[_\-\.]/g, ' ')
+                        // Replace multiple spaces with single space
+                        .replace(/\s+/g, ' ')
+                        // Trim
+                        .trim();
                 },
 
+                // Regex building
+                /**
+                 * Build regex patterns for all enabled placeholder formats
+                 * @returns {Array<{name: string, rx: RegExp}>} Array of regex patterns
+                 */
+                buildRegexes() {
+                    const patterns = [];
+
+                    // Order matters: prefer longer/more specific delimiters first
+                    if (this.formats.handlebars) {
+                        patterns.push({
+                            name: 'handlebars',
+                            rx: /\{\{\s*([^\{\}]+?)\s*\}\}/g
+                        });
+                    }
+
+                    if (this.formats.tpl) {
+                        patterns.push({
+                            name: 'tpl',
+                            rx: /\$\{\s*([^\{\}]+?)\s*\}/g
+                        });
+                    }
+
+                    if (this.formats.brackets) {
+                        patterns.push({
+                            name: 'brackets',
+                            rx: /\[([^\[\]]+?)\]/g
+                        });
+                    }
+
+                    if (this.formats.braces) {
+                        // Use lookbehind/lookahead to avoid matching handlebars
+                        try {
+                            patterns.push({
+                                name: 'braces',
+                                rx: /(?<!\{)\{([^{}]+?)\}(?!\})/g
+                            });
+                        } catch (e) {
+                            // Fallback for browsers without lookbehind support
+                            patterns.push({
+                                name: 'braces',
+                                rx: /\{([^{}]+?)\}/g
+                            });
+                        }
+                    }
+
+                    // Custom delimiter support
+                    if (this.customOpen && this.customClose) {
+                        try {
+                            const pattern = this.escapeRegex(this.customOpen) + 
+                                          '([^\\r\\n]+?)' + 
+                                          this.escapeRegex(this.customClose);
+                            patterns.push({
+                                name: 'custom',
+                                rx: new RegExp(pattern, 'g')
+                            });
+                        } catch (e) {
+                            // Silently ignore invalid custom regex
+                            console.warn('Invalid custom delimiter pattern:', e);
+                        }
+                    }
+
+                    return patterns;
+                },
+
+                // Parsing and processing
+                /**
+                 * Parse raw text to detect placeholders
+                 */
+                parse() {
+                    this.isProcessing = true;
+                    
+                    // Use setTimeout to allow UI to update
+                    setTimeout(() => {
+                        const regexes = this.buildRegexes();
+                        const seen = new Map();
+
+                        // Extract all unique placeholders
+                        regexes.forEach(({ rx }) => {
+                            rx.lastIndex = 0;
+                            let match;
+                            
+                            while ((match = rx.exec(this.raw)) !== null) {
+                                const rawLabel = (match[1] || '').trim();
+                                if (!rawLabel) continue;
+                                
+                                const key = this.slug(rawLabel);
+                                if (!seen.has(key)) {
+                                    const cleanedLabel = this.cleanLabel(rawLabel);
+                                    seen.set(key, {
+                                        key,
+                                        label: cleanedLabel,
+                                        placeholder: `Enter ${cleanedLabel.toLowerCase()}`
+                                    });
+                                }
+                            }
+                        });
+
+                        this.placeholders = Array.from(seen.values());
+
+                        // Preserve existing values when re-parsing
+                        const nextValues = {};
+                        this.placeholders.forEach(ph => {
+                            nextValues[ph.key] = this.values[ph.key] ?? '';
+                        });
+                        this.values = nextValues;
+
+                        this.apply();
+                        this.isProcessing = false;
+                    }, 10);
+                },
+
+                /**
+                 * Apply values to placeholders and generate output
+                 */
+                apply() {
+                    if (!this.raw) {
+                        this.output = '';
+                        this.filled = '';
+                        return;
+                    }
+
+                    this.output = this.raw;
+                    const regexes = this.buildRegexes();
+                    let result = this.raw;
+
+                    // Replace placeholders with values
+                    regexes.forEach(({ rx }) => {
+                        rx.lastIndex = 0;
+                        result = result.replace(rx, (match, label) => {
+                            const key = this.slug((label || '').trim());
+                            const value = this.values[key] ?? '';
+                            
+                            if (value && value.length) {
+                                return value;
+                            }
+                            
+                            return this.keepTokens ? match : '';
+                        });
+                    });
+
+                    this.filled = result;
+                    this.persistValues();
+                },
+
+                /**
+                 * Highlight placeholders in the preview with click handlers
+                 * @param {string} text - Text to highlight
+                 * @returns {string} HTML with highlighted tokens
+                 */
+                highlight(text) {
+                    const regexes = this.buildRegexes();
+                    let highlighted = text;
+
+                    regexes.forEach(({ rx }) => {
+                        rx.lastIndex = 0;
+                        highlighted = highlighted.replace(rx, (match, label) => {
+                            const key = this.slug((label || '').trim());
+                            const value = this.values[key] ?? '';
+                            const escapedLabel = this.escapeHtml(label.trim());
+                            
+                            if (value && value.length) {
+                                // Filled token - add Tailwind classes for styling
+                                return `<span class="token token-filled rounded-lg px-1.5 py-0.5 cursor-pointer transition-all duration-150 select-none hover:scale-105 active:scale-95" 
+                                             data-key="${key}" 
+                                             onclick="window.focusPlaceholder('${key}')" 
+                                             title="Click to edit ${escapedLabel}">${this.escapeHtml(value)}</span>`;
+                            }
+                            
+                            // Unfilled token - add Tailwind classes + animation
+                            return `<span class="token token-missing rounded-lg px-1.5 py-0.5 cursor-pointer transition-all duration-150 select-none hover:scale-105 active:scale-95 animate-pulse-red hover:animate-none" 
+                                         data-key="${key}" 
+                                         onclick="window.focusPlaceholder('${key}')" 
+                                         title="Click to fill ${escapedLabel}">${this.escapeHtml(match)}</span>`;
+                        });
+                    });
+
+                    return highlighted;
+                },
+
+                // Value management
+                clearValues() {
+                    Object.keys(this.values).forEach(key => {
+                        this.values[key] = '';
+                    });
+                    this.apply();
+                },
+
+                // Local storage management
                 saveToLocal() {
-                    localStorage.setItem('pf.raw', this.raw);
-                    localStorage.setItem('pf.values', JSON.stringify(this.values));
-                    this.toast('✅ Saved to browser');
-                },
-                loadFromLocal() {
-                    const r = localStorage.getItem('pf.raw');
-                    const v = localStorage.getItem('pf.values');
-                    if (r) this.raw = r;
-                    if (v) {
-                        try { this.values = JSON.parse(v) || {}; } catch { this.values = {}; }
+                    try {
+                        localStorage.setItem('pf.raw', this.raw);
+                        localStorage.setItem('pf.values', JSON.stringify(this.values));
+                        this.toast('✅ Saved to browser', 2000, 'success');
+                    } catch (e) {
+                        console.error('Failed to save to localStorage:', e);
+                        this.toast('❌ Failed to save', 2000, 'error');
                     }
                 },
-                persistValues() { localStorage.setItem('pf.values', JSON.stringify(this.values)); },
+
+                loadFromLocal() {
+                    try {
+                        const rawData = localStorage.getItem('pf.raw');
+                        const valuesData = localStorage.getItem('pf.values');
+                        
+                        if (rawData) {
+                            this.raw = rawData;
+                        }
+                        
+                        if (valuesData) {
+                            this.values = JSON.parse(valuesData) || {};
+                        }
+                        
+                        // Re-parse and apply to update the preview
+                        this.parse();
+                    } catch (e) {
+                        console.error('Failed to load from localStorage:', e);
+                        this.values = {};
+                    }
+                },
+
+                persistValues() {
+                    try {
+                        localStorage.setItem('pf.values', JSON.stringify(this.values));
+                    } catch (e) {
+                        console.error('Failed to persist values:', e);
+                    }
+                },
 
                 resetAll() {
                     this.raw = '';
                     this.values = {};
                     this.placeholders = [];
                     this.output = '';
+                    
                     localStorage.removeItem('pf.raw');
                     localStorage.removeItem('pf.values');
                 },
 
-                toast(msg) {
-                    const el = document.createElement('div');
-                    el.textContent = msg;
-                    el.className = 'fixed bottom-6 left-1/2 -translate-x-1/2 rounded-full px-4 py-2 text-sm border border-neutral-200 dark:border-neutral-800 bg-white/90 dark:bg-neutral-900/90 shadow-soft';
-                    document.body.appendChild(el);
-                    setTimeout(() => el.remove(), 2000);
+                // Clipboard operations
+                copyRaw() {
+                    this.copyToClipboard(this.raw, '😀 Raw prompt copied');
+                },
+
+                copyOutput() {
+                    this.copyToClipboard(this.filled || this.raw, '🤩 Filled prompt copied');
+                },
+
+                /**
+                 * Copy text to clipboard with fallback
+                 * @param {string} text - Text to copy
+                 * @param {string} successMessage - Message to show on success
+                 */
+                copyToClipboard(text, successMessage) {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(text)
+                            .then(() => this.toast(successMessage, 2000, 'success'))
+                            .catch(() => this.toast('❌ Copy failed', 2000, 'error'));
+                    } else {
+                        // Fallback for older browsers
+                        const textarea = document.createElement('textarea');
+                        textarea.value = text;
+                        textarea.style.position = 'fixed';
+                        textarea.style.opacity = '0';
+                        document.body.appendChild(textarea);
+                        textarea.select();
+                        
+                        try {
+                            document.execCommand('copy');
+                            this.toast(successMessage, 2000, 'success');
+                        } catch (e) {
+                            this.toast('❌ Copy failed', 2000, 'error');
+                        }
+                        
+                        document.body.removeChild(textarea);
+                    }
+                },
+
+                // File operations
+                downloadJSON() {
+                    const data = {
+                        prompt: this.raw,
+                        values: this.values,
+                        filled: this.filled,
+                        exported_at: new Date().toISOString()
+                    };
+
+                    try {
+                        const blob = new Blob(
+                            [JSON.stringify(data, null, 2)], 
+                            { type: 'application/json' }
+                        );
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        
+                        link.href = url;
+                        link.download = `prompt-filler-${Date.now()}.json`;
+                        link.click();
+                        
+                        URL.revokeObjectURL(url);
+                        this.toast('💾 Downloaded successfully', 2000, 'success');
+                    } catch (e) {
+                        console.error('Failed to download JSON:', e);
+                        this.toast('❌ Download failed', 2000, 'error');
+                    }
+                },
+
+                // UI feedback
+                /**
+                 * Show a toast notification using Alpine.js reactive state
+                 * @param {string} message - Message to display
+                 * @param {number} duration - Duration in milliseconds
+                 * @param {string} type - Type of toast: 'success', 'error', 'info'
+                 */
+                toast(message, duration = 2000, type = 'info') {
+                    // Set toast message and classes based on type
+                    this.toastMessage = message;
+                    
+                    // stronger backdrop filters for better separation from background
+                    let bgClass = 'bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md backdrop-saturate-150';
+                    let borderClass = 'border-neutral-200 dark:border-neutral-800';
+
+                    if (type === 'success') {
+                        bgClass = 'bg-green-50 dark:bg-green-900/30 backdrop-blur-md backdrop-saturate-150';
+                        borderClass = 'border-green-200 dark:border-green-800';
+                    } else if (type === 'error') {
+                        bgClass = 'bg-red-50 dark:bg-red-900/30 backdrop-blur-md backdrop-saturate-150';
+                        borderClass = 'border-red-200 dark:border-red-800';
+                    }
+
+                    this.toastClasses = `${borderClass} ${bgClass}`;
+                    this.toastVisible = true;
+                    
+                    // Auto-hide after duration
+                    setTimeout(() => {
+                        this.toastVisible = false;
+                        setTimeout(() => {
+                            this.toastMessage = '';
+                        }, 300); // Wait for transition to complete
+                    }, duration);
                 }
             }
         }
